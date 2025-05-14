@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Canvas地图设计与玩家控制工具</title>
+    <style>
+      body {
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-family: Arial;
+      }
+      #controls {
+        margin: 10px;
+      }
+      canvas {
+        border: 1px solid #ddd;
+        margin-top: 10px;
+      }
+      button,
+      input {
+        padding: 5px;
+        font-size: 14px;
+        margin-right: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      地图大小:
+      <input type="number" id="mapSize" value="20" min="10" max="100" />
+      <button onclick="initMap()">生成地图</button>
+      <button onclick="exportMap()">导出地图</button>
+    </div>
+    <canvas id="mapCanvas"></canvas>
+
+    <script>
+      const canvas = document.getElementById("mapCanvas");
+      const ctx = canvas.getContext("2d");
+      let size;
+      let gridSize = 20; // 每个格子20像素
+      let mapData;
+      let player;
+
+      function initMap() {
+        size = parseInt(document.getElementById("mapSize").value);
+        canvas.width = canvas.height = size * gridSize;
+        mapData = Array.from({ length: size }, () => Array(size).fill(0));
+
+        // 初始化玩家位置
+        player = { x: 0, y: 0 };
+        draw();
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 画网格
+        ctx.strokeStyle = "#eee";
+        for (let i = 0; i <= size; i++) {
+          ctx.beginPath();
+          ctx.moveTo(i * gridSize, 0);
+          ctx.lineTo(i * gridSize, size * gridSize);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(0, i * gridSize);
+          ctx.lineTo(size * gridSize, i * gridSize);
+          ctx.stroke();
+        }
+
+        // 画物体格子
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            if (mapData[y][x] === 1) {
+              ctx.fillStyle = "gray";
+              ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
+            }
+          }
+        }
+
+        // 画玩家
+        ctx.fillStyle = "blue";
+        ctx.fillRect(
+          player.x * gridSize,
+          player.y * gridSize,
+          gridSize,
+          gridSize
+        );
+      }
+
+      canvas.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.floor((e.clientX - rect.left) / gridSize);
+        const y = Math.floor((e.clientY - rect.top) / gridSize);
+
+        mapData[y][x] = mapData[y][x] === 1 ? 0 : 1;
+        draw();
+      });
+
+      window.addEventListener("keydown", (e) => {
+        const moves = {
+          ArrowUp: [0, -1],
+          ArrowDown: [0, 1],
+          ArrowLeft: [-1, 0],
+          ArrowRight: [1, 0],
+        };
+        if (moves[e.key]) {
+          const [dx, dy] = moves[e.key];
+          const nx = player.x + dx;
+          const ny = player.y + dy;
+          if (
+            nx >= 0 &&
+            ny >= 0 &&
+            nx < size &&
+            ny < size &&
+            mapData[ny][nx] === 0
+          ) {
+            player.x = nx;
+            player.y = ny;
+            draw();
+          } else {
+            alert("碰撞了或越界了！");
+          }
+        }
+      });
+
+      function exportMap() {
+        const exportData = {
+          size,
+          mapData,
+          player,
+          config: {
+            playerSkin: "blue",
+            obstacleSkin: "gray",
+          },
+        };
+
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "map.json";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      // 初次加载
+      initMap();
+    </script>
+  </body>
+</html>
