@@ -3,62 +3,97 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Canvas地图设计与玩家控制工具</title>
+    <title>开放世界地图编辑器 - JSON导出</title>
     <style>
       body {
         margin: 0;
+        font-family: sans-serif;
         display: flex;
         flex-direction: column;
         align-items: center;
-        font-family: Arial;
-      }
-      #controls {
-        margin: 10px;
       }
       canvas {
-        border: 1px solid #ddd;
+        border: 1px solid #ccc;
         margin-top: 10px;
+      }
+      #controls {
+        margin-top: 10px;
+      }
+      #editorInput {
+        position: absolute;
+        display: none;
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+        text-align: center;
+        border: 1px solid #333;
+        background: #fff;
+        z-index: 10;
+      }
+      #outputBox {
+        width: 90%;
+        height: 200px;
+        margin-top: 10px;
+        display: none;
       }
       button,
       input {
-        padding: 5px;
         font-size: 14px;
         margin-right: 10px;
+        padding: 5px;
       }
     </style>
   </head>
   <body>
     <div id="controls">
       地图大小:
-      <input type="number" id="mapSize" value="20" min="10" max="100" />
+      <input type="number" id="mapSize" value="10" min="5" max="100" />
+      单格像素:
+      <input type="number" id="gridSize" value="40" min="10" max="100" />
       <button onclick="initMap()">生成地图</button>
-      <button onclick="exportMap()">导出地图</button>
+      <button onclick="exportMap()">📋 导出 JSON</button>
     </div>
+
     <canvas id="mapCanvas"></canvas>
+    <input type="text" id="editorInput" maxlength="3" />
+    <textarea id="outputBox" readonly></textarea>
 
     <script>
       const canvas = document.getElementById("mapCanvas");
       const ctx = canvas.getContext("2d");
-      let size;
-      let gridSize = 20; // 每个格子20像素
-      let mapData;
-      let player;
+      const editorInput = document.getElementById("editorInput");
+      const outputBox = document.getElementById("outputBox");
+
+      let size = 10;
+      let gridSize = 40;
+      let mapData = [];
+      let player = { x: 0, y: 0 };
+      let editX = 0,
+        editY = 0;
+      const colorMap = {};
+
+      function getRandomColor() {
+        const letters = "6789ABCDEF";
+        let color = "#";
+        for (let i = 0; i < 6; i++) {
+          color += letters[Math.floor(Math.random() * letters.length)];
+        }
+        return color;
+      }
 
       function initMap() {
-        size = parseInt(document.getElementById("mapSize").value);
+        gridSize = parseInt(document.getElementById("gridSize").value) || 40;
+        size = parseInt(document.getElementById("mapSize").value) || 10;
         canvas.width = canvas.height = size * gridSize;
-        mapData = Array.from({ length: size }, () => Array(size).fill(0));
-
-        // 初始化玩家位置
+        mapData = Array.from({ length: size }, () => Array(size).fill(""));
         player = { x: 0, y: 0 };
         draw();
       }
 
       function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#ccc";
 
-        // 画网格
-        ctx.strokeStyle = "#eee";
         for (let i = 0; i <= size; i++) {
           ctx.beginPath();
           ctx.moveTo(i * gridSize, 0);
@@ -71,17 +106,27 @@
           ctx.stroke();
         }
 
-        // 画物体格子
         for (let y = 0; y < size; y++) {
           for (let x = 0; x < size; x++) {
-            if (mapData[y][x] === 1) {
-              ctx.fillStyle = "gray";
+            const rawKey = mapData[y][x] || "";
+            const key = rawKey.toUpperCase();
+            if (key) {
+              if (!colorMap[key]) colorMap[key] = getRandomColor();
+              ctx.fillStyle = colorMap[key];
               ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
+              ctx.fillStyle = "#000";
+              ctx.font = "16px Arial";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText(
+                key,
+                x * gridSize + gridSize / 2,
+                y * gridSize + gridSize / 2
+              );
             }
           }
         }
 
-        // 画玩家
         ctx.fillStyle = "blue";
         ctx.fillRect(
           player.x * gridSize,
@@ -91,13 +136,32 @@
         );
       }
 
+      canvas.addEventListener("click", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.floor((e.clientX - rect.left) / gridSize);
+        const y = Math.floor((e.clientY - rect.top) / gridSize);
+        editX = x;
+        editY = y;
+        editorInput.style.left = `${x * gridSize + rect.left}px`;
+        editorInput.style.top = `${y * gridSize + rect.top}px`;
+        editorInput.value = mapData[y][x];
+        editorInput.style.display = "block";
+        editorInput.focus();
+      });
+
+      editorInput.addEventListener("blur", () => {
+        const value = editorInput.value.trim().toUpperCase();
+        mapData[editY][editX] = value;
+        editorInput.style.display = "none";
+        draw();
+      });
+
       canvas.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         const rect = canvas.getBoundingClientRect();
         const x = Math.floor((e.clientX - rect.left) / gridSize);
         const y = Math.floor((e.clientY - rect.top) / gridSize);
-
-        mapData[y][x] = mapData[y][x] === 1 ? 0 : 1;
+        mapData[y][x] = "";
         draw();
       });
 
@@ -112,36 +176,47 @@
           const [dx, dy] = moves[e.key];
           const nx = player.x + dx;
           const ny = player.y + dy;
-          if (
-            nx >= 0 &&
-            ny >= 0 &&
-            nx < size &&
-            ny < size &&
-            mapData[ny][nx] === 0
-          ) {
+          if (nx >= 0 && ny >= 0 && nx < size && ny < size) {
             player.x = nx;
             player.y = ny;
             draw();
-          } else {
-            alert("碰撞了或越界了！");
           }
         }
       });
 
       function exportMap() {
-        const exportData = {
+        const tiles = [];
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const type = mapData[y][x]?.trim();
+            if (type) {
+              tiles.push({ x, y, type });
+            }
+          }
+        }
+
+        const mapJson = {
+          version: 1,
           size,
-          mapData,
+          gridSize,
           player,
-          config: {
-            playerSkin: "blue",
-            obstacleSkin: "gray",
+          tiles,
+          meta: {
+            createdAt: new Date().toISOString(),
+            author: "map-designer",
           },
         };
 
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-          type: "application/json",
-        });
+        const jsonText = JSON.stringify(mapJson, null, 2);
+        outputBox.style.display = "block";
+        outputBox.value = jsonText;
+
+        navigator.clipboard
+          .writeText(jsonText)
+          .then(() => alert("地图 JSON 已复制"))
+          .catch(() => alert("复制失败，请手动复制"));
+
+        const blob = new Blob([jsonText], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -150,7 +225,6 @@
         URL.revokeObjectURL(url);
       }
 
-      // 初次加载
       initMap();
     </script>
   </body>

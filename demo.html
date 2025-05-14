@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <title>地图渲染器实例</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: sans-serif;
+        background: #f0f0f0;
+      }
+      #myGameBox {
+        border: 1px solid #ccc;
+        display: inline-block;
+      }
+    </style>
+    <script src="./game_sdk.js"></script>
+  </head>
+  <body>
+    <h2>🌍 地图渲染器</h2>
+    <div id="myGameBox"></div>
+
+    <script>
+      // ======= 你的地图 JSON 数据（可替换为 fetch('map.json')）=======
+      const mapData = {
+        version: 1,
+        size: 10,
+        gridSize: 40,
+        player: { x: 0, y: 0 },
+        tiles: [
+          { x: 1, y: 1, type: "W1" },
+          { x: 2, y: 1, type: "W1" },
+          { x: 3, y: 1, type: "A" },
+          { x: 4, y: 1, type: "B" },
+          { x: 5, y: 1, type: "B" },
+          { x: 6, y: 1, type: "W1" },
+          { x: 2, y: 2, type: "A" },
+        ],
+        meta: {
+          createdAt: "2025-05-14T10:00:00Z",
+          author: "map-designer",
+        },
+      };
+
+      // ======= 调用 initGame 渲染地图 =======
+      initGame({
+        containerId: "myGameBox", // ✅ 可改成不传则自动生成
+        mapData,
+        tileSkins: {
+          W1: "https://dummyimage.com/40x40/999/fff&text=W", // 可换成真实贴图路径
+          A: "https://dummyimage.com/40x40/7cfc00/000&text=A",
+          B: "https://dummyimage.com/40x40/228b22/fff&text=B",
+        },
+        playerSkin: "blue", // 或换成图片路径
+      });
+    </script>
+
+    <script>
+      // ======= map-sdk.js 内部定义的 initGame 方法 =======
+      function initGame(options) {
+        const {
+          containerId,
+          containerEl,
+          mapData,
+          tileSkins = {},
+          playerSkin = "blue",
+        } = options;
+
+        const size = mapData.size;
+        const gridSize = mapData.gridSize;
+        const player = { ...mapData.player };
+
+        let container;
+        if (containerEl instanceof HTMLElement) {
+          container = containerEl;
+        } else if (containerId) {
+          container = document.getElementById(containerId);
+        } else {
+          const autoId = "game_" + Date.now();
+          container = document.createElement("div");
+          container.id = autoId;
+          document.body.appendChild(container);
+        }
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = canvas.height = size * gridSize;
+        container.innerHTML = "";
+        container.appendChild(canvas);
+
+        const tileMap = new Map();
+        mapData.tiles.forEach((t) => {
+          tileMap.set(`${t.x},${t.y}`, t.type);
+        });
+
+        const images = {};
+        const loadImage = (src) =>
+          new Promise((resolve) => {
+            if (!src) return resolve(null);
+            if (images[src]) return resolve(images[src]);
+            const img = new Image();
+            img.src = src;
+            img.onload = () => {
+              images[src] = img;
+              resolve(img);
+            };
+            img.onerror = () => resolve(null);
+          });
+
+        async function draw() {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+              const key = tileMap.get(`${x},${y}`);
+              if (key) {
+                const img = await loadImage(tileSkins[key]);
+                if (img) {
+                  ctx.drawImage(
+                    img,
+                    x * gridSize,
+                    y * gridSize,
+                    gridSize,
+                    gridSize
+                  );
+                } else {
+                  ctx.fillStyle = "#aaa";
+                  ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
+                  ctx.fillStyle = "#000";
+                  ctx.font = "14px Arial";
+                  ctx.textAlign = "center";
+                  ctx.textBaseline = "middle";
+                  ctx.fillText(
+                    key,
+                    x * gridSize + gridSize / 2,
+                    y * gridSize + gridSize / 2
+                  );
+                }
+              }
+            }
+          }
+
+          const playerImg = await loadImage(playerSkin);
+          if (playerImg) {
+            ctx.drawImage(
+              playerImg,
+              player.x * gridSize,
+              player.y * gridSize,
+              gridSize,
+              gridSize
+            );
+          } else {
+            ctx.fillStyle = playerSkin;
+            ctx.fillRect(
+              player.x * gridSize,
+              player.y * gridSize,
+              gridSize,
+              gridSize
+            );
+          }
+        }
+
+        function isWall(x, y) {
+          const key = tileMap.get(`${x},${y}`);
+          return key && key.toUpperCase().startsWith("W");
+        }
+
+        window.addEventListener("keydown", (e) => {
+          const moves = {
+            ArrowUp: [0, -1],
+            ArrowDown: [0, 1],
+            ArrowLeft: [-1, 0],
+            ArrowRight: [1, 0],
+          };
+          if (moves[e.key]) {
+            const [dx, dy] = moves[e.key];
+            const nx = player.x + dx;
+            const ny = player.y + dy;
+            if (
+              nx >= 0 &&
+              ny >= 0 &&
+              nx < size &&
+              ny < size &&
+              !isWall(nx, ny)
+            ) {
+              player.x = nx;
+              player.y = ny;
+              draw();
+            }
+          }
+        });
+
+        draw();
+      }
+    </script>
+  </body>
+</html>
